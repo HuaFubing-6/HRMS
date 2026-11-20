@@ -1,0 +1,8 @@
+Django==5.2
+PyMySQL==1.2.3
+Pillow==10.4.0
+# AI 模块（大模型）依赖
+# openai 是调用兼容 OpenAI 协议的客户端，硅基流动/DeepSeek 都能用
+openai>=1.60
+# 从 .env 读 API Key，避免把 Key 写进代码
+python-dotenv>=1.0

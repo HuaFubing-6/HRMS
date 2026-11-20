@@ -1,0 +1,190 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  任务管理页（T9 的界面部分，全项目唯一 AJAX 提交）
+  对应视图：app01/views/task.py
+    ├─ task_list  渲染这一页（表单 + 已提交任务的表格）
+    └─ task_add   接收 AJAX 的 POST，永远返回 JSON
+
+  为什么表单没有 action 和 method？
+  因为提交完全交给下面的 JS（$.ajax）来做，浏览器不会自己发请求。
+  如果这里写了 action="/task/add/"，用户按回车就会退化成整页提交。
+
+  每个输入框下面的 id="err_xxx" 空 span 是给 AJAX 回填错误用的：
+  后端返回 {"errors": {"title": "..."}}，前端就找 #err_title 把文字塞进去。
+  所以字段名和这些 id 必须严格对应——这是前后端的接口契约。
+-->
+<div class="page-title">任务管理</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">新增任务（AJAX 提交，不刷新页面）</div>
+    <div class="panel-body">
+        <form id="taskForm" class="form-horizontal">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label">级别</label>
+                        <div class="col-sm-9">
+                            <select name="level" class="form-control">
+                                <option value="1">高</option>
+                                <option value="2">中</option>
+                                <option value="3">低</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label">标题</label>
+                        <div class="col-sm-9">
+                            <input type="text" name="title" class="form-control">
+                            <span class="text-danger small" id="err_title"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label">详细信息</label>
+                        <div class="col-sm-9">
+                            <textarea name="detail" class="form-control" rows="3"></textarea>
+                            <span class="text-danger small" id="err_detail"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label">负责人</label>
+                        <div class="col-sm-9">
+                            <select name="leader" class="form-control">
+                                {% for e in emp_list %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+                            </select>
+                            <span class="text-danger small" id="err_leader"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <div class="col-sm-12">
+                    <!-- type="button" 而不是 submit：submit 会被浏览器原生提交，导致按回车就整页跳走 -->
+                    <button type="button" class="btn btn-primary" id="btnAdd">提交</button>
+                    <span class="text-success small" id="okMsg" style="margin-left:10px;"></span>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">任务列表</div>
+    {% if request.GET.err == 'not_approved' %}
+    <!-- 视图里拦下"未审核就标记完成"时会带上这一句，告诉用户为什么没生效 -->
+    <div class="alert alert-warning" style="margin:0;">该任务还没有通过超管审核，暂时不能标记完成。</div>
+    {% endif %}
+    <!--
+      列表取值说明：
+      1. get_level_display —— choices 字段的展示方法，库里存的 1/2/3 自动变成"高/中/低"，
+         不用它就会直接显示数字；
+      2. obj.leader.name —— leader 是外键，跨表取负责人姓名；
+         这里没做 select_related，每行会多一条 SQL（数据量小可接受，
+         要优化就在视图里加 .select_related("leader")）；
+      3. {{ page_html }} 不加 |safe —— 因为 Pagination.page_html() 内部已经 mark_safe，
+         外面再加一层不会出错，但没必要。
+    -->
+    <table class="table table-bordered table-hover" style="margin-bottom:0;">
+        <thead><tr><th>ID</th><th>级别</th><th>标题</th><th>负责人</th><th>归属部门</th><th>审核状态</th><th>完成情况</th><th style="width:210px;">操作</th></tr></thead>
+        <tbody>
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <td>{{ obj.get_level_display }}</td>
+                <td>
+                    {{ obj.title }}
+                    {% if obj.detail %}<div class="text-muted small">{{ obj.detail|truncatechars:28 }}</div>{% endif %}
+                </td>
+                <td>{{ obj.leader.name }}</td>
+                <!-- 归属部门：空的是超管发的全公司任务，所有部门都能看到 -->
+                <td>
+                    {% if obj.depart %}{{ obj.depart.title }}
+                    {% else %}<span class="label label-info">全公司</span>{% endif %}
+                </td>
+                <!-- 审核状态：三种状态三种颜色，一眼看出这条能不能干活 -->
+                <td>
+                    {% if obj.status == 'approved' %}<span class="label label-success">已通过</span>
+                    {% elif obj.status == 'rejected' %}<span class="label label-danger">已驳回</span>
+                    {% else %}<span class="label label-warning">待审核</span>{% endif %}
+                </td>
+                <!-- 完成情况：干完了打绿色"已完成"标签，没干完显示"进行中" -->
+                <td>
+                    {% if obj.is_done %}<span class="label label-success">已完成</span>
+                    {% else %}<span class="text-muted">进行中</span>{% endif %}
+                </td>
+                <td>
+                    <!-- 审核按钮只对超管、且只对"待审核"的任务出现 -->
+                    {% if can_audit and obj.status == 'pending' %}
+                    <a href="/task/audit/{{ obj.id }}/pass/" class="btn btn-xs btn-success">通过</a>
+                    <a href="/task/audit/{{ obj.id }}/reject/" class="btn btn-xs btn-default">驳回</a>
+                    {% endif %}
+                    <!-- 已通过且未完成的任务，才给"标记完成"按钮 -->
+                    {% if obj.status == 'approved' and not obj.is_done %}
+                    <a href="/task/done/{{ obj.id }}/" class="btn btn-xs btn-info">标记完成</a>
+                    {% endif %}
+                    <a href="/task/edit/{{ obj.id }}/" class="btn btn-xs btn-primary">编辑</a>
+                    <a href="/task/delete/{{ obj.id }}/" class="btn btn-xs btn-danger"
+                       onclick="return confirm('确认删除这条任务？')">删除</a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="8" class="text-center text-muted">暂无任务，请在上方表单提交</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="panel-footer">{{ page_html }}</div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+/*
+  全项目唯一的 AJAX 提交，值得逐行看懂：
+  1. $(function(){...}) 是 jQuery 的"文档加载完再执行"，等价于 window.onload；
+  2. $("#taskForm").serialize() 把表单里所有带 name 的字段拼成
+     "level=1&title=xx&detail=xx&leader=3&csrfmiddlewaretoken=..."，
+     所以每个 input / select 都必须有 name，没有 name 的字段不会被发出去；
+  3. 后端约定：{"status": true, "msg": "..."} 表示成功；
+     {"status": false, "errors": {"title": "..."}} 表示校验失败；
+  4. $("#err_" + k) 是动态拼 id：后端返回的 key 就是字段名，
+     拼出来正好对上页面上预留的 #err_title / #err_detail / #err_leader；
+  5. 成功后延迟 800 毫秒再刷新，是为了让"提交成功"这句话能被看见。
+*/
+$(function () {
+    $("#btnAdd").click(function () {
+        // 清空上次的错误与提示
+        $("#err_title, #err_detail, #err_leader, #okMsg").text("");
+        $.ajax({
+            url: "/task/add/",
+            type: "post",
+            data: $("#taskForm").serialize(),
+            success: function (res) {
+                if (res.status) {
+                    $("#okMsg").text(res.msg + "，正在刷新…");
+                    setTimeout(function () { location.reload(); }, 800);
+                } else {
+                    // 校验错误回显到对应字段，不刷新页面
+                    if (res.errors) {
+                        $.each(res.errors, function (k, v) {
+                            $("#err_" + k).text(v);
+                        });
+                    }
+                }
+            },
+            error: function () {
+                $("#okMsg").text("提交失败，请重试").removeClass("text-success").addClass("text-danger");
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

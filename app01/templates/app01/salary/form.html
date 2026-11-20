@@ -1,0 +1,60 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  录入薪资页（T7 的界面部分）
+  对应视图：app01/views/salary.py 的 salary_add()
+
+  三个金额字段（基本工资/奖金/扣款）传上去都是字符串，
+  视图会先用正则校验格式、再转成 Decimal 才落库——
+  如果直接拿字符串做减法，会抛 unsupported operand type(s) for -: 'str' and 'str'。
+  页面上不显示"实发"，因为它由模型 save() 算出来，要到列表页才能看到结果。
+-->
+<div class="page-title">录入薪资</div>
+<div class="panel panel-default"><div class="panel-body">
+{% if errors %}
+<div class="alert alert-danger">
+    {% for e in errors %}<p style="margin:0;">{{ e }}</p>{% endfor %}
+</div>
+{% endif %}
+<div class="alert alert-info">
+    提示：迟到、早退每次罚 <b>50</b> 元，缺勤每天罚 <b>200</b> 元。
+    保存时系统会按该员工本月的考勤记录<b>自动计算罚款并计入实发</b>，
+    下面「其他扣款」只填考勤以外的扣款，不要重复填写罚款。
+</div>
+<form method="post" class="form-horizontal">
+    {% csrf_token %}
+    <div class="form-group">
+        <label class="col-sm-2 control-label">员工</label>
+        <div class="col-sm-4">
+            <select name="employee" class="form-control">
+                {% for e in emp_list %}
+                <option value="{{ e.id }}" {% if form_data.employee == e.id|stringformat:'s' %}selected{% endif %}>{{ e.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">月份</label>
+        <div class="col-sm-4"><input type="month" name="month" class="form-control" value="{{ form_data.month|default:'' }}" required></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">基本工资</label>
+        <div class="col-sm-4"><input type="number" step="0.01" min="0" name="base_pay" class="form-control" value="{{ form_data.base_pay|default:'' }}"></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">奖金</label>
+        <div class="col-sm-4"><input type="number" step="0.01" min="0" name="bonus" class="form-control" value="{{ form_data.bonus|default:'' }}"></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">其他扣款</label>
+        <div class="col-sm-4"><input type="number" step="0.01" min="0" name="deduction" class="form-control" value="{{ form_data.deduction|default:'' }}"></div>
+    </div>
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-4">
+            <button class="btn btn-primary">保存</button>
+            <a href="/salary/list/" class="btn btn-default">返回</a>
+        </div>
+    </div>
+</form>
+</div></div>
+{% endblock %}

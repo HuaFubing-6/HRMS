@@ -1,0 +1,67 @@
+{% extends "app01/layout.html" %}
+
+<!--
+==============================================================================
+  角色新增 / 编辑表单（同一个模板两用）
+  对应视图：app01/views/rbac.py
+             新增 → role_add()
+             编辑 → role_edit(request, pk)
+  对应路由：/role/add/ 与 /role/edit/<int:pk>/
+
+  一个模板两用的关键变量：
+    title_value  标题栏和输入框要显示的值（新增时为空）
+    checked      已经勾选的权限 id 列表（新增时为空列表，编辑时是原角色的权限）
+    error        校验失败时的提示
+==============================================================================
+-->
+
+{% block content %}
+<div class="page-title">{% if obj %}编辑角色{% else %}新增角色{% endif %}</div>
+
+<div class="panel panel-default"><div class="panel-body">
+
+    {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<form method="post" class="form-horizontal">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label class="col-sm-2 control-label">角色名称</label>
+        <div class="col-sm-4">
+            <!-- 回填当前角色名；新增时为控 -->
+            <input type="text" name="title" class="form-control" value="{{ title_value }}">
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="col-sm-2 control-label">分配权限</label>
+        <div class="col-sm-8">
+            <!--
+              权限是一个个复选框，name 全部叫 permissions。
+              HTML 里同名复选框会提交多个值，所以后端不能用 request.POST.get("permissions")
+              （那样只会拿到最后一个），必须用 request.POST.getlist("permissions") 拿完整列表。
+
+              checked：编辑时把该角色原有的权限打上勾。
+              用 p.id in checked 判断，p.id 是整数，所以视图里已经把 checked 转成 int 列表，
+              否则类型对不上会全部显示成未勾选。
+
+              label 包住 input：点文字也能勾选。
+            -->
+            {% for p in perm_list %}
+            <label class="checkbox-inline" style="margin-right:14px;">
+                <input type="checkbox" name="permissions" value="{{ p.id }}"
+                       {% if p.id in checked %}checked{% endif %}> {{ p.title }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-8">
+            <button class="btn btn-primary">保存</button>
+            <a href="/role/list/" class="btn btn-default">返回</a>
+        </div>
+    </div>
+</form>
+</div></div>
+{% endblock %}

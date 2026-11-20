@@ -1,0 +1,73 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  新增用户页（T5 的界面部分）
+  对应视图：app01/views/rbac.py 的 user_add()
+
+  两个安全相关的地方，答辩可以指着讲：
+  1. 密码框是 type="password"，只是遮住显示，传过去的仍是明文，
+     落库前由视图调 make_password() 转成 PBKDF2 哈希——库里存的永远不是明文；
+  2. 角色下拉允许留空（"-- 请选择 --" 的 value 是空串），
+     视图里对应 role_id or None，表示"这个账号先建着、回头再分配角色"。
+-->
+<div class="page-title">新增用户</div>
+<div class="panel panel-default"><div class="panel-body">
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" class="form-horizontal">
+    {% csrf_token %}
+    <div class="form-group">
+        <label class="col-sm-2 control-label">用户名</label>
+        <div class="col-sm-4"><input type="text" name="username" class="form-control"></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">密码</label>
+        <div class="col-sm-4"><input type="password" name="password" class="form-control"></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">角色</label>
+        <div class="col-sm-4">
+            <select name="role" class="form-control">
+                <option value="">-- 请选择 --</option>
+                {% for r in role_list %}<option value="{{ r.id }}">{{ r.title }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!--
+      部门管理员专用：绑定"管辖部门"后，
+      员工 / 考勤 / 薪资 三个列表都只显示这个部门的数据，实现"不能跨部门"。
+      其他角色不填，填了也不生效（判断逻辑在 utils/scope.py 的 is_dept_admin）。
+    -->
+    <div class="form-group">
+        <label class="col-sm-2 control-label">管辖部门</label>
+        <div class="col-sm-4">
+            <select name="depart" class="form-control">
+                <option value="">-- 不限制 --</option>
+                {% for d in depart_list %}<option value="{{ d.id }}">{{ d.title }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!--
+      普通员工专用：绑定"对应员工"后，工资列表只显示这个人的记录。
+      模型里是 OneToOne，一个员工档案只能绑一个账号，
+      重复绑会在视图里被拦下并提示。
+    -->
+    <div class="form-group">
+        <label class="col-sm-2 control-label">对应员工</label>
+        <div class="col-sm-4">
+            <select name="employee" class="form-control">
+                <option value="">-- 不绑定 --</option>
+                {% for e in emp_list %}<option value="{{ e.id }}">{{ e.name }}（{{ e.depart.title }}）</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-4">
+            <button class="btn btn-primary">保存</button>
+            <a href="/user/list/" class="btn btn-default">返回</a>
+        </div>
+    </div>
+</form>
+</div></div>
+{% endblock %}

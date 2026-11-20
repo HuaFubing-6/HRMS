@@ -1,0 +1,61 @@
+{% extends "app01/layout.html" %}
+{% load static %}
+{% block content %}
+<!--
+  数据统计页（T10 的界面部分）
+  对应视图：app01/views/chart.py，三个函数各管一段：
+    chart_index    只负责渲染这张空页面
+    dept_pie       GET /chart/dept/pie/     → 部门人数 JSON
+    salary_trend   GET /chart/salary/trend/ → 各月薪资总额 JSON
+
+  设计要点：页面本身不含任何数据，只有两个空容器，
+  图表由下面的 JS 用 AJAX 拉到 JSON 后现场绘制。
+  好处是数据与页面解耦——想换图表类型只改 JS，后端接口不用动。
+-->
+<div class="page-title">数据统计</div>
+<div class="row">
+    <div class="col-sm-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">部门人数分布</div>
+            <div class="panel-body"><div id="pieChart" style="height:350px;"></div></div>
+        </div>
+    </div>
+    <div class="col-sm-6">
+        <div class="panel panel-default">
+            <div class="panel-heading">各月薪资总额趋势</div>
+            <div class="panel-body"><div id="lineChart" style="height:350px;"></div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<!--
+  ECharts 用本地文件，不再走 CDN：
+  教室断网或校园网拦截 CDN 时，CDN 版本会让整页图表直接空白，
+  而 bootstrap / jquery 早就本地化到 static/vendor/ 了，这里保持一致。
+  答辩时如果老师问"断网还能用吗"，指这一行就能答。
+-->
+<script src="{% static 'vendor/echarts.min.js' %}"></script>
+<script>
+$(function () {
+    // 部门人数饼图
+    $.get("/chart/dept/pie/", function (res) {
+        var chart = echarts.init(document.getElementById("pieChart"));
+        chart.setOption({
+            series: [{type: "pie", radius: "60%", data: res.data,
+                      label: {formatter: "{b}: {c} 人"}}]
+        });
+    });
+    // 薪资趋势折线
+    $.get("/chart/salary/trend/", function (res) {
+        var chart = echarts.init(document.getElementById("lineChart"));
+        chart.setOption({
+            xAxis: {type: "category", data: res.months},
+            yAxis: {type: "value"},
+            series: [{type: "line", data: res.totals, smooth: true}]
+        });
+    });
+});
+</script>
+{% endblock %}

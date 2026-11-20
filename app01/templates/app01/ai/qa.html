@@ -1,0 +1,116 @@
+{% extends "app01/layout.html" %}
+{% block title %}制度问答 - 企业员工管理系统{% endblock %}
+{% block content %}
+<!--
+  制度问答页（T3）
+  视图：qa_page（渲染） + qa_ask（POST 接口）
+
+  这一页要体现"有据可依"：
+    1. 回答下方列出"依据"条目（后端返回 sources）；
+    2. 检索词也显示出来（terms），让人看懂为什么命中这几条；
+    3. 资料里没有时，回答就是"不知道"，并且不调用模型（省额度 + 防编造）。
+-->
+<h3>制度知识问答</h3>
+<p class="text-muted">
+    知识库当前有 <b>{{ knowledge_count }}</b> 条制度。回答只依据这些制度，问别的它会说"不知道"。
+</p>
+
+{% csrf_token %}
+
+<div class="panel panel-default">
+    <div class="panel-body">
+        <div class="form-group">
+            <label for="qaQuestion">你的问题</label>
+            <textarea id="qaQuestion" class="form-control" rows="3" maxlength="500"
+                      placeholder="例如：迟到一次扣多少钱？"></textarea>
+            <div class="help-block" id="qaErr"></div>
+        </div>
+        <button id="btnAsk" class="btn btn-primary">提问</button>
+        <span id="qaStatus" class="text-muted" style="margin-left:10px;"></span>
+
+        <div style="margin-top:12px;">
+            <span class="text-muted">试试：</span>
+            <button class="btn btn-xs btn-default example">迟到一次扣多少钱</button>
+            <button class="btn btn-xs btn-default example">出差住宿怎么报销</button>
+            <button class="btn btn-xs btn-default example">请假需要提前几天申请</button>
+            <button class="btn btn-xs btn-default example" data-negative="1">公司的股票代码是多少</button>
+        </div>
+    </div>
+</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">回答</div>
+    <div class="panel-body">
+        <div id="qaAnswer" style="white-space:pre-wrap; min-height:80px;">等待提问…</div>
+        <div id="qaMeta" style="margin-top:12px;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+$(function () {
+    var csrftoken = $('[name=csrfmiddlewaretoken]').val();
+
+    function ask(question) {
+        $("#qaErr").text("");
+        if (question.length < 2) {
+            $("#qaErr").text("问题至少 2 个字");
+            return;
+        }
+
+        $("#btnAsk").prop("disabled", true);
+        $("#qaStatus").text("检索资料并生成回答…");
+        $("#qaMeta").empty();
+        $("#qaAnswer").text("");
+
+        $.ajax({
+            url: "/ai/qa/ask/",
+            type: "post",
+            dataType: "json",
+            headers: {"X-CSRFToken": csrftoken},
+            data: {question: question},
+            success: function (res) {
+                if (!res.status) {
+                    $("#qaAnswer").text("提问失败：" + res.msg);
+                    return;
+                }
+
+                $("#qaAnswer").text(res.data);
+
+                // 依据条目：让"答案是照着资料说的"这件事可见
+                var $meta = $("#qaMeta");
+                if (res.sources && res.sources.length) {
+                    $meta.append('<div>依据：</div>');
+                    $.each(res.sources, function (i, s) {
+                        $meta.append($('<span class="label label-info" style="margin-right:6px;display:inline-block;margin-top:4px;"></span>').text(s));
+                    });
+                } else {
+                    $meta.append('<div class="text-muted">知识库里没有匹配条目，因此直接回答"不知道"（未调用模型）。</div>');
+                }
+                if (res.terms && res.terms.length) {
+                    $meta.append('<div class="text-muted" style="margin-top:8px;">检索词：' + res.terms.join(" / ") + '</div>');
+                }
+                $("#qaStatus").text("");
+            },
+            error: function () {
+                $("#qaAnswer").text("网络异常，请检查服务是否在运行。");
+                $("#qaStatus").text("");
+            },
+            complete: function () { $("#btnAsk").prop("disabled", false); }
+        });
+    }
+
+    $("#btnAsk").click(function () {
+        ask($.trim($("#qaQuestion").val()));
+    });
+
+    // 示例按钮：点一下直接填进输入框并提问，演示时不用手打
+    $(".example").click(function () {
+        var q = $(this).text();
+        $("#qaQuestion").val(q);
+        ask(q);
+    });
+});
+</script>
+{% endblock %}

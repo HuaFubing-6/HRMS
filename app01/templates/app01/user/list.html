@@ -1,0 +1,38 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  用户列表页（T5 的界面部分）
+  对应视图：app01/views/rbac.py 的 user_list()
+
+  两处细节：
+  1. 角色名用 role.title|default:"-"：账号可能没有分配角色（外键为 NULL），
+     直接写 obj.role.title 会渲染成空字符串甚至报错，default 兜住这种情况；
+  2. 视图里用了 select_related("role")，所以这里逐行取角色名不会 N+1。
+-->
+<div class="page-title">用户列表</div>
+
+<!-- 想删最后一个超管被拒时，user_delete() 带 ?err=last_super 回来，这里显示原因 -->
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="panel panel-default">
+    <div class="panel-heading"><a href="/user/add/" class="btn btn-success">新增用户</a></div>
+    <table class="table table-bordered">
+        <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>管辖部门</th><th>对应员工</th><th>是否超管</th><th>操作</th></tr></thead>
+        <tbody>
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <td>{{ obj.username }}</td>
+                <td>{{ obj.role.title|default:"-" }}</td>
+                <!-- 部门管理员才有值；|default:"-" 兜住 None，否则会渲染成空单元格 -->
+                <td>{{ obj.depart.title|default:"-" }}</td>
+                <!-- 普通员工才有值；同理兜底 -->
+                <td>{{ obj.employee.name|default:"-" }}</td>
+                <td>{% if obj.is_superuser %}<span class="label label-danger">是</span>{% else %}否{% endif %}</td>
+                <td><a href="/user/delete/{{ obj.id }}/" class="btn btn-xs btn-danger" onclick="return confirm('确认删除？')">删除</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,272 @@
+{% load filters %}
+{% comment %}
+==============================================================================
+  悬浮 AI 助手（全局浮窗）
+  被 layout.html 用 include 引入，所以每个页面右下角都有，不用逐页改。
+
+  权限：只有拥有 /ai/chat/ 权限的账号才渲染这个浮窗；
+        没有权限的人连 HTML 都收不到，不是"显示了再 403"。
+
+  接口：POST /ai/chat/stream/ （SSE 逐字），失败自动退回 /ai/chat/ask/
+        —— 和对话助手页共用同一套接口、同一份 session 历史，
+           所以在浮窗里说过的话，进对话页也能接着聊。
+
+  交互：右下角圆形按钮 → 点开面板 → 输入框回车发送 → 逐字出字 →
+        关闭后不消失，下次打开还在（历史在服务端 session 里）。
+==============================================================================
+{% endcomment %}
+{% if request|has_perm:"/ai/chat/" %}
+<style>
+    /* 浮窗整体：固定右下角，层级压在内容之上但不遮挡导航 */
+    .ai-float { position: fixed; right: 22px; bottom: 22px; z-index: 1040; font-family: inherit; }
+
+    /* 圆形按钮：深色实心，克制不抢眼；只留一个轻微阴影 */
+    .ai-float-btn {
+        width: 52px; height: 52px; border: 0; border-radius: 50%;
+        background: #262b30; color: #fff; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+        transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    .ai-float-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0, 0, 0, .24); background: #111417; }
+    .ai-float-btn svg { width: 24px; height: 24px; }
+    .ai-float-btn .ai-dot { display: none; width: 7px; height: 7px; border-radius: 50%; background: #7dd3a8;
+                            position: absolute; margin: -26px 0 0 26px; }
+
+    /* 面板：白底 + 细边 + 大圆角，从按钮位置"长"出来 */
+    .ai-float-panel {
+        width: 350px; height: 470px; background: #fff; border: 1px solid #e6e6e6; border-radius: 14px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, .16); display: none; flex-direction: column;
+        overflow: hidden; margin-bottom: 12px; transform-origin: bottom right;
+        animation: aiPanelIn .18s ease-out;
+    }
+    .ai-float-panel.open { display: flex; }
+    @keyframes aiPanelIn { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .ai-float-head { display: flex; align-items: center; justify-content: space-between;
+                     padding: 13px 14px; border-bottom: 1px solid #f0f0f0; }
+    .ai-float-head .t { font-size: 14px; color: #262b30; letter-spacing: .2px; }
+    .ai-float-head .t small { color: #a0a0a0; font-size: 11px; margin-left: 6px; }
+    .ai-float-tools { display: flex; align-items: center; gap: 4px; }
+    .ai-float-tools button { border: 0; background: transparent; color: #999; font-size: 12px;
+                             padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+    .ai-float-tools button:hover { background: #f4f4f4; color: #333; }
+
+    .ai-float-body { flex: 1; overflow-y: auto; padding: 14px; background: #fbfbfb; }
+    .ai-float-body::-webkit-scrollbar { width: 6px; }
+    .ai-float-body::-webkit-scrollbar-thumb { background: #e2e2e2; border-radius: 3px; }
+
+    .ai-msg { margin-bottom: 12px; display: flex; }
+    .ai-msg .bubble { max-width: 82%; padding: 9px 12px; border-radius: 10px;
+                      font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+    .ai-msg.user { justify-content: flex-end; }
+    .ai-msg.user .bubble { background: #eef4f0; color: #1f2a24; }
+    .ai-msg.bot .bubble { background: #fff; border: 1px solid #ececec; color: #333; }
+
+    .ai-float-empty { color: #9a9a9a; font-size: 13px; line-height: 1.8; padding: 6px 2px; }
+    .ai-chip { display: inline-block; border: 1px solid #e6e6e6; background: #fff; color: #555;
+               font-size: 12px; padding: 4px 9px; border-radius: 14px; margin: 6px 6px 0 0; cursor: pointer; }
+    .ai-chip:hover { border-color: #c9d8d0; color: #2f5d4a; }
+
+    .ai-float-foot { border-top: 1px solid #f0f0f0; padding: 10px 12px; background: #fff; }
+    .ai-float-foot .row-in { display: flex; align-items: center; gap: 8px; }
+    .ai-float-input { flex: 1; border: 1px solid #e6e6e6; border-radius: 8px; padding: 8px 10px;
+                      font-size: 13px; outline: none; resize: none; height: 38px; max-height: 38px; }
+    .ai-float-input:focus { border-color: #b9c9c0; box-shadow: 0 0 0 3px rgba(47, 93, 74, .07); }
+    .ai-float-send { border: 0; background: #262b30; color: #fff; border-radius: 8px;
+                     width: 38px; height: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .ai-float-send:disabled { opacity: .5; cursor: default; }
+    .ai-float-tip { font-size: 11px; color: #b0b0b0; margin: 6px 2px 0; }
+
+    /* 小屏：面板撑满宽度，避免遮住半个屏幕 */
+    @media (max-width: 480px) {
+        .ai-float { right: 12px; bottom: 12px; }
+        .ai-float-panel { width: calc(100vw - 24px); height: 62vh; }
+    }
+</style>
+
+<div class="ai-float">
+    <div class="ai-float-panel" id="aiFloatPanel">
+        <div class="ai-float-head">
+            <div class="t">智能助手 <small>制度 · 考勤 · 薪资</small></div>
+            <div class="ai-float-tools">
+                <button type="button" id="aiFloatClear">清空</button>
+                <button type="button" id="aiFloatClose" title="收起">✕</button>
+            </div>
+        </div>
+
+        <div class="ai-float-body" id="aiFloatBody">
+            <div class="ai-float-empty" id="aiFloatEmpty">
+                你好，我可以查制度、讲考勤规则。<br>
+                <span class="ai-chip">迟到怎么罚款</span>
+                <span class="ai-chip">请假提前几天</span>
+                <span class="ai-chip">出差住宿标准</span>
+            </div>
+        </div>
+
+        <div class="ai-float-foot">
+            <div class="row-in">
+                <textarea class="ai-float-input" id="aiFloatInput" maxlength="200"
+                          placeholder="输入问题，回车发送"></textarea>
+                <button class="ai-float-send" id="aiFloatSend" title="发送">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2">
+                        <path d="M4 12h14M13 6l6 6-6 6"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="ai-float-tip">回答仅依据公司制度库，资料里没有会说"不知道"</div>
+        </div>
+    </div>
+
+    <button class="ai-float-btn" id="aiFloatToggle" title="打开智能助手" aria-label="打开智能助手">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
+            <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 3 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4z"/>
+        </svg>
+    </button>
+</div>
+{% endif %}
+
+{# 脚本只在有权限时才注入，省得无权限的账号也跑一遍空逻辑 #}
+{% if request|has_perm:"/ai/chat/" %}
+<script>
+(function () {
+    var $panel = document.getElementById("aiFloatPanel");
+    var $body = document.getElementById("aiFloatBody");
+    var $empty = document.getElementById("aiFloatEmpty");
+    var $input = document.getElementById("aiFloatInput");
+    var $send = document.getElementById("aiFloatSend");
+
+    function csrf() {
+        // 从 cookie 取 CSRF token：浮窗可能出现在任何页面，
+        // 不是每页都有 csrf_token 隐藏域，读 cookie 最稳
+        var m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    function scrollBottom() { $body.scrollTop = $body.scrollHeight; }
+
+    function addMsg(role, text) {
+        if ($empty) { $empty.style.display = "none"; }
+        var wrap = document.createElement("div");
+        wrap.className = "ai-msg " + (role === "user" ? "user" : "bot");
+        var bubble = document.createElement("div");
+        bubble.className = "bubble";
+        // textContent 而不是 innerHTML：模型输出里带 <script> 也不会被执行
+        bubble.textContent = text;
+        wrap.appendChild(bubble);
+        $body.appendChild(wrap);
+        scrollBottom();
+        return bubble;
+    }
+
+    function setBusy(busy) {
+        $send.disabled = busy;
+        $input.disabled = busy;
+    }
+
+    function askNormal(q) {
+        var body = new FormData();
+        body.append("question", q);
+        fetch("/ai/chat/ask/", {method: "POST", headers: {"X-CSRFToken": csrf()}, body: body})
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                addMsg("bot", res.status ? res.data : "（回复失败：" + res.msg + "）");
+            })
+            .catch(function () { addMsg("bot", "（网络异常，请检查服务是否在运行）"); })
+            .finally(function () { setBusy(false); });
+    }
+
+    function askStream(q) {
+        var bubble = addMsg("bot", "");
+        var buffer = "", done = false;
+
+        fetch("/ai/chat/stream/", {
+            method: "POST",
+            headers: {"X-CSRFToken": csrf(), "Content-Type": "application/x-www-form-urlencoded"},
+            body: "question=" + encodeURIComponent(q)
+        }).then(function (resp) {
+            if (!resp.ok) { throw new Error("HTTP " + resp.status); }
+            if (!resp.body) { askNormal(q); return; }
+
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder("utf-8");
+
+            function pump() {
+                return reader.read().then(function (r) {
+                    if (r.done) { setBusy(false); return; }
+                    buffer += decoder.decode(r.value, {stream: true});
+                    var frames = buffer.split("\n\n");
+                    buffer = frames.pop();
+
+                    frames.forEach(function (f) {
+                        var line = f.trim();
+                        if (line.indexOf("data:") !== 0) { return; }
+                        var payload = line.slice(5).trim();
+                        if (payload === "[DONE]") { done = true; return; }
+                        try { var obj = JSON.parse(payload); } catch (e) { return; }
+                        if (obj.error) { bubble.textContent += "（" + obj.error + "）"; return; }
+                        if (obj.delta) { bubble.textContent += obj.delta; scrollBottom(); }
+                    });
+                    return pump();
+                });
+            }
+            return pump();
+        }).catch(function () {
+            // 流式断了：保留已出的字，再用普通接口补完整回答
+            if (!done) {
+                bubble.textContent += "（连接中断，已切换普通模式）";
+                askNormal(q);
+            } else { setBusy(false); }
+        });
+    }
+
+    function send() {
+        var q = $input.value.trim();
+        if (q.length < 2) { $input.focus(); return; }
+        addMsg("user", q);
+        $input.value = "";
+        setBusy(true);
+        askStream(q);
+    }
+
+    document.getElementById("aiFloatToggle").addEventListener("click", function () {
+        $panel.classList.toggle("open");
+        if ($panel.classList.contains("open")) { $input.focus(); scrollBottom(); }
+    });
+
+    document.getElementById("aiFloatClose").addEventListener("click", function () {
+        $panel.classList.remove("open");
+    });
+
+    document.getElementById("aiFloatClear").addEventListener("click", function () {
+        fetch("/ai/chat/clear/", {method: "POST", headers: {"X-CSRFToken": csrf()}})
+            .finally(function () {
+                $body.innerHTML = "";
+                var tip = document.createElement("div");
+                tip.className = "ai-float-empty";
+                tip.textContent = "对话已清空，可以重新问。";
+                $body.appendChild(tip);
+                $empty = tip;
+            });
+    });
+
+    $send.addEventListener("click", send);
+    $input.addEventListener("keydown", function (e) {
+        if (e.keyCode === 13 && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    // 空状态里的示例问题：点一下就发
+    Array.prototype.forEach.call(document.querySelectorAll(".ai-chip"), function (chip) {
+        chip.addEventListener("click", function () {
+            $input.value = chip.textContent;
+            send();
+        });
+    });
+
+    // Esc 收起，符合常见浮层的操作习惯
+    document.addEventListener("keydown", function (e) {
+        if (e.keyCode === 27) { $panel.classList.remove("open"); }
+    });
+})();
+</script>
+{% endif %}

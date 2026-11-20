@@ -1,0 +1,68 @@
+{% extends "app01/layout.html" %}
+{% load filters %}
+{% block content %}
+<!--
+  考勤列表页（T6 的界面部分）
+  对应视图：app01/views/attendance.py 的 attendance_list()
+
+  状态那一列是四种值到四种颜色的映射：normal 绿、late 黄、early 蓝、其余算缺勤（红）。
+  注意 status 不是表单传上来的，是模型 save() 根据上下班时间算好存进库的，
+  所以这里不需要任何判断逻辑，只负责"值 → 颜色"。
+  员工名能直接取 obj.employee.name，靠的是视图里的 select_related 避免 N+1。
+-->
+<div class="page-title">考勤列表</div>
+<div class="panel panel-default">
+    <div class="panel-heading">
+        {% if request|has_perm:"/attendance/add/" %}
+        <a href="/attendance/add/" class="btn btn-success">添加上班打卡</a>
+        {% endif %}
+    </div>
+
+    {% if no_binding %}
+    <div class="alert alert-warning" style="margin:10px;">
+        你的账号还没有绑定员工档案，所以看不到任何考勤记录。
+        请联系管理员在「用户管理 → 编辑」里，为你的账号选择「对应员工」，绑定后这里就会显示你自己的考勤。
+    </div>
+    {% endif %}
+
+    <table class="table table-bordered table-hover">
+        <thead><tr><th>ID</th><th>员工</th><th>日期</th><th>上班时间</th><th>下班时间</th><th>状态</th><th>违规</th><th>罚款</th>{% if request|has_perm:"/attendance/delete/" %}<th>操作</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <td>{{ obj.employee.name }}</td>
+                <td>{{ obj.date|date:"Y-m-d" }}</td>
+                <td>{{ obj.on_time|default:"-" }}</td>
+                <td>{{ obj.off_time|default:"-" }}</td>
+                <td>
+                    {% if obj.status == 'normal' %}<span class="label label-success">按时</span>
+                    {% elif obj.status == 'late' %}<span class="label label-warning">迟到</span>
+                    {% elif obj.status == 'early' %}<span class="label label-primary">早退</span>
+                    {% else %}<span class="label label-danger">缺勤</span>{% endif %}
+                </td>
+                <!--
+                  违规列：迟到、早退、缺勤都算违规，统一打一个红色标签；
+                  按时显示"无"而不是留空，避免看起来像"漏算了"。
+                  判断只读 obj.status，因为状态是模型 save() 算好的，模板不做业务判断。
+                -->
+                <td>
+                    {% if obj.status == 'late' or obj.status == 'early' or obj.status == 'absent' %}
+                    <span class="label label-danger">违规</span>
+                    {% else %}<span class="text-muted">无</span>{% endif %}
+                </td>
+                <!-- 罚款：金额由模型按状态自动算（迟到/早退 50、缺勤 200），模板只负责显示 -->
+                <td>
+                    {% if obj.fine %}<span style="color:#d9534f;font-weight:bold;">¥ {{ obj.fine }}</span>
+                    {% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
+                {% if request|has_perm:"/attendance/delete/" %}
+                <td><a href="/attendance/delete/{{ obj.id }}/" class="btn btn-xs btn-danger" onclick="return confirm('确认删除？')">删除</a></td>
+                {% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="panel-footer">{{ page_html }}</div>
+</div>
+{% endblock %}

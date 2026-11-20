@@ -1,0 +1,148 @@
+{% load static filters %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<!--
+==============================================================================
+  全局布局模板（所有业务页面都继承本文件，写法见下方 block 说明）
+  对应文件：app01/templates/app01/layout.html
+  （模板放在 app 内部的 templates/app01/ 下，这是 Django 官方推荐的位置，
+    好处是 app 可以整个拷走复用，不依赖项目根的配置）
+
+  这个文件只做三件事：
+    1. 引入样式和脚本（本地文件，断网也能用）
+    2. 画顶部导航条，并按权限决定哪些菜单显示
+    3. 留出 content / script 两个插槽，交给子模板填内容
+
+  子模板的写法（文字描述，注释里不能直接写 block 标签，否则会被 Django 解析）：
+    第一行 extends "app01/layout.html" 继承本文件；
+    再用 block content 包住页面主体；
+    需要页面专用 JS 就再写一个 block script。
+==============================================================================
+-->
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}企业员工管理系统{% endblock %}</title>
+    <!-- Bootstrap 3.4.1 CSS：改用本地文件，避免教室断网/校园网拦截 CDN 导致整站失去样式 -->
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap.min.css' %}">
+    <style>
+        /* body 顶部留 70px：因为导航条是 fixed 定位，不留空隙会被它盖住 */
+        body { padding-top: 70px; background: #f5f5f5; }
+        .navbar-inverse { border-radius: 0; }
+        /* 页面标题条：与参考界面一致的浅灰标题栏 */
+        .page-title { background: #f2f2f2; border: 1px solid #e5e5e5; padding: 10px 16px;
+                      font-size: 16px; color: #333; margin: 0 0 15px 0; }
+        /* 首页统计卡：白底细边框 + 黑色大数字，对齐教室投影截图 */
+        .stat-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 2px;
+                     padding: 26px 20px; text-align: center; margin-bottom: 20px; }
+        .stat-card .num { font-size: 40px; color: #333; font-weight: normal; line-height: 1.2; }
+        .stat-card .label-text { color: #888; margin-top: 8px; font-size: 14px; }
+        .panel-title-actions { float: right; margin-top: -6px; }
+        .page-jump { display: inline-block; vertical-align: middle; color: #666; font-size: 14px; }
+        .table > thead > tr > th { background: #fafafa; font-weight: normal; color: #666; }
+    </style>
+</head>
+<body>
+
+<!--
+  顶部导航：dark 主题 + 固定定位
+  右侧显示当前登录人的用户名（优先取 session 里的，取不到再用 user 对象）
+-->
+<nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container-fluid">
+        <div class="navbar-header">
+            <a class="navbar-brand" href="/index/">企业员工管理系统</a>
+        </div>
+
+        <div class="collapse navbar-collapse">
+            <!--
+              菜单按权限显示（RBAC 的第三层）。
+              `request|has_perm:"/xxx/"` 来自 app01/templatetags/filters.py：
+                超管 → 直接 True
+                普通用户 → 比对 session 里的权限列表
+
+              为什么这里也要过滤？
+              中间件只能拦住"输了 URL 的人"，拦不住"按钮还摆在那儿"这件事。
+              普通员工看到"用户管理"点进去收到 403，体验很差，
+              所以没权限的菜单直接不渲染。
+
+              注意：菜单里的 URL 必须和 app01/urls.py 里的 path 完全一致。
+            -->
+            <ul class="nav navbar-nav">
+                <li><a href="/index/">首页</a></li>
+                {% if request|has_perm:"/department/list/" %}<li><a href="/department/list/">部门管理</a></li>{% endif %}
+                {% if request|has_perm:"/employee/list/" %}<li><a href="/employee/list/">员工管理</a></li>{% endif %}
+                {% if request|has_perm:"/attendance/list/" %}<li><a href="/attendance/list/">考勤管理</a></li>{% endif %}
+                {% if request|has_perm:"/salary/list/" %}<li><a href="/salary/list/">薪资管理</a></li>{% endif %}
+                {% if request|has_perm:"/notice/list/" %}<li><a href="/notice/list/">公告管理</a></li>{% endif %}
+                {% if request|has_perm:"/task/list/" %}<li><a href="/task/list/">任务管理</a></li>{% endif %}
+                {% if request|has_perm:"/chart/" %}<li><a href="/chart/">数据统计</a></li>{% endif %}
+                {% if request|has_perm:"/ai/qa/" or request|has_perm:"/ai/jd/" %}
+                <!--
+                  智能助手：四个入口按权限逐条显隐。
+                  普通员工只有问答和对话（见 init_data 的 emp_urls），
+                  所以这里不能整块判断，要每条单独判断。
+                -->
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button">
+                        智能助手 <span class="caret"></span>
+                    </a>
+                    <ul class="dropdown-menu">
+                        {% if request|has_perm:"/ai/jd/" %}<li><a href="/ai/jd/">招聘 JD 生成</a></li>{% endif %}
+                        {% if request|has_perm:"/ai/qa/" %}<li><a href="/ai/qa/">制度问答</a></li>{% endif %}
+                        {% if request|has_perm:"/ai/comment/" %}<li><a href="/ai/comment/">数据点评</a></li>{% endif %}
+                        {% if request|has_perm:"/ai/chat/" %}<li><a href="/ai/chat/">对话助手</a></li>{% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+                {% if request|has_perm:"/user/list/" %}<li><a href="/user/list/">用户管理</a></li>{% endif %}
+                {% if request|has_perm:"/role/list/" %}<li><a href="/role/list/">角色管理</a></li>{% endif %}
+            </ul>
+
+            <ul class="nav navbar-nav navbar-right">
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button">
+                        {{ request.session.username|default:request.user.username }} <span class="caret"></span>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <!--
+                          账号切换（答辩演示用）：
+                          ① 超管本尊登录时，显示"切换账号"，点进去可以切成普通员工演示权限差异；
+                          ② 已经切出来的会话（session 里有 switch_from），显示"切回管理员"。
+
+                          普通员工自己登录时不会出现这两个入口 ——
+                          因为 switch_from 只有"由超管发起切换"时才会写进 session，
+                          这样也堵住了"普通员工靠这个入口把自己提成超管"的提权路径。
+                        -->
+                        {% if request.session.switch_from %}
+                        <li><a href="/account/switch/back/">切回管理员</a></li>
+                        {% elif request.user.is_superuser %}
+                        <li><a href="/account/switch/">切换账号</a></li>
+                        {% endif %}
+                        <!-- /logout/ 在中间件白名单里，所以退出不需要权限判断 -->
+                        <li><a href="/logout/">退出登录</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- 子模板的页面主体填到这里 -->
+<div class="container-fluid">
+    {% block content %}{% endblock %}
+</div>
+
+<!-- 脚本放在 body 末尾：保证执行时上面的 DOM 已经存在 -->
+<!-- jQuery 3.6.0（本地）：任务 AJAX 依赖它，断网时也要能用 -->
+<script src="{% static 'vendor/jquery.min.js' %}"></script>
+<!-- Bootstrap 3.4.1 JS（本地）：下拉菜单、提示框等组件依赖它 -->
+<script src="{% static 'vendor/bootstrap.min.js' %}"></script>
+<!-- 全局悬浮 AI 助手：右下角浮窗，所有页面通用（内部自带权限判断） -->
+{% include "app01/ai/float.html" %}
+<!-- 子模板自己的 JS 填到这里（比如 task/list.html 的 AJAX 提交） -->
+{% block script %}{% endblock %}
+</body>
+</html>

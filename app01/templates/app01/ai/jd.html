@@ -1,0 +1,118 @@
+{% extends "app01/layout.html" %}
+{% block title %}招聘 JD 生成 - 企业员工管理系统{% endblock %}
+{% block content %}
+<!--
+  招聘 JD 生成页（T2）
+  视图：app01/views/ai.py 的 jd_page（渲染） + jd_generate（POST 接口）
+
+  页面结构就三块：输入区、结果区、提示区。
+  结果不是整页刷新出来的，而是 AJAX 拿到 JSON 后写进 <pre>，
+  所以打字时页面不会闪一下。
+-->
+<h3>智能生成招聘 JD</h3>
+<p class="text-muted">输入岗位名称，模型会按【岗位职责】【任职要求】【薪资范围】三段输出。约 5~10 秒。</p>
+
+{% csrf_token %}
+
+<div class="panel panel-default">
+    <div class="panel-body">
+        <div class="row">
+            <div class="col-sm-4">
+                <div class="form-group">
+                    <label for="jdTitle">岗位名称 <span class="text-danger">*</span></label>
+                    <input id="jdTitle" class="form-control" maxlength="30"
+                           placeholder="例如：后端开发工程师">
+                    <div class="help-block" id="titleErr"></div>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="form-group">
+                    <label for="jdDepart">所属部门（可选）</label>
+                    <input id="jdDepart" class="form-control" maxlength="20" placeholder="例如：技术部">
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="form-group">
+                    <label for="jdYears">经验要求（可选）</label>
+                    <input id="jdYears" class="form-control" maxlength="10" placeholder="例如：3 年以上">
+                </div>
+            </div>
+        </div>
+
+        <button id="btnJd" class="btn btn-primary">生成 JD</button>
+        <button id="btnCopy" class="btn btn-default" disabled>复制结果</button>
+        <span id="jdStatus" class="text-muted" style="margin-left:10px;"></span>
+    </div>
+</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">生成结果</div>
+    <div class="panel-body">
+        <pre id="jdResult" style="white-space:pre-wrap; margin:0; min-height:120px; border:0; background:#fff;">还没有生成内容。</pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+$(function () {
+    var csrftoken = $('[name=csrfmiddlewaretoken]').val();
+
+    function setBusy(busy) {
+        $("#btnJd").prop("disabled", busy).text(busy ? "生成中…" : "生成 JD");
+        $("#jdStatus").text(busy ? "正在调用模型，请稍候…" : "");
+    }
+
+    $("#btnJd").click(function () {
+        var title = $.trim($("#jdTitle").val());
+        $("#titleErr").text("");
+        if (title.length < 2) {
+            $("#titleErr").text("岗位名称至少 2 个字");
+            return;
+        }
+
+        setBusy(true);
+        $.ajax({
+            url: "/ai/jd/generate/",
+            type: "post",
+            dataType: "json",
+            headers: {"X-CSRFToken": csrftoken},
+            data: {
+                title: title,
+                depart: $.trim($("#jdDepart").val()),
+                years: $.trim($("#jdYears").val())
+            },
+            success: function (res) {
+                if (res.status) {
+                    $("#jdResult").text(res.data);
+                    $("#btnCopy").prop("disabled", false);
+                    $("#jdStatus").text("用时 " + res.elapsed + " 秒");
+                } else {
+                    $("#jdResult").text("生成失败：" + res.msg);
+                }
+            },
+            error: function () {
+                $("#jdResult").text("网络异常，请检查服务是否在运行。");
+            },
+            complete: function () { setBusy(false); }
+        });
+    });
+
+    // 复制：只复制结果文本，不带标题
+    $("#btnCopy").click(function () {
+        var text = $("#jdResult").text();
+        if (!text) { return; }
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function () {
+                $("#jdStatus").text("已复制到剪贴板");
+            });
+        } else {
+            var $t = $("<textarea>").val(text).appendTo("body").select();
+            document.execCommand("copy");
+            $t.remove();
+            $("#jdStatus").text("已复制");
+        }
+    });
+});
+</script>
+{% endblock %}

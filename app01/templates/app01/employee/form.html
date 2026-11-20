@@ -1,0 +1,45 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  员工新增/编辑页（T3 的界面部分，一页两用）
+  对应视图：app01/views/employee.py 的 employee_add() 与 employee_edit()
+
+  两个必须讲的技术点：
+  1. 标题靠 obj 区分：视图编辑时传 obj，这里 if obj 就显示"编辑员工"，
+     新增时 obj 为空就是"新增员工"——不用做两张页面；
+  2. 表单必须带 enctype="multipart/form-data"，
+     否则头像文件根本传不到后端（浏览器只发文字字段），这是文件上传最常见的坑。
+
+  字段用 for field in form 循环渲染：label 和控件都从表单对象拿，
+  样式由 utils/bootstrap.py 的 BootStrapModelForm 统一加了 form-control，
+  所以这里不用手写任何 input。
+-->
+<div class="page-title">{% if obj %}编辑员工{% else %}新增员工{% endif %}</div>
+<div class="panel panel-default">
+    <div class="panel-body">
+        {% if form.errors %}
+        <div class="alert alert-danger">
+            {% for field in form %}
+                {% for e in field.errors %}<p>{{ field.label }}: {{ e }}</p>{% endfor %}
+            {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" enctype="multipart/form-data" class="form-horizontal">
+            {% csrf_token %}
+            {% for field in form %}
+            <div class="form-group">
+                <label class="col-sm-2 control-label">{{ field.label }}</label>
+                <div class="col-sm-5">{{ field }}</div>
+            </div>
+            {% endfor %}
+            <div class="form-group">
+                <div class="col-sm-offset-2 col-sm-5">
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    <a href="/employee/list/" class="btn btn-default">返回</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<style>#id_name,#id_phone,#id_age,#id_account,#id_entry_time{width:100%;}</style>
+{% endblock %}

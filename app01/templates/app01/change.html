@@ -1,0 +1,59 @@
+{% extends "app01/layout.html" %}
+
+<!--
+==============================================================================
+  通用表单页（新建 / 编辑共用，对应教学模板的 change.html）
+  对应视图：任何"渲染一个 ModelForm"的增改接口
+
+  为什么新建和编辑能共用同一张页面？
+  两者的差别只有两处：① 标题文字 ② 字段初值。
+  - 标题：视图传 title 进来；
+  - 初值：编辑时视图传 instance=obj，ModelForm 会自动把已有值填进控件；
+          新建时没有 instance，控件就是空的。
+  所以模板里一行 if 都不用写。
+
+  为什么用 for 循环遍历 form 的每个字段，而不是一个个手写 input？
+  - 加字段时只改 utils/form.py 的 Meta.fields，模板不用动；
+  - field.label / field.errors / class="form-control" 全部自动带出来，
+    不会出现"某个输入框忘了加 form-control 导致高度不齐"。
+==============================================================================
+-->
+
+{% block content %}
+<!-- 标题由视图传入：'新增部门' / '编辑部门' -->
+<div class="page-title">{{ title }}</div>
+
+<div class="panel panel-default">
+    <div class="panel-body">
+        <!--
+          novalidate：关闭浏览器自带的气泡校验。
+          原因：浏览器提示是英文、位置也统一不了，
+          统一交给后端 ModelForm 校验，错误显示在字段下方，风格一致。
+        -->
+        <form method="post" class="form-horizontal" novalidate>
+            {% csrf_token %}
+
+            {% for field in form %}
+            <!-- has-error：字段有错时这一行标红，Bootstrap 3 的现成类 -->
+            <div class="form-group {% if field.errors %}has-error{% endif %}">
+                <label class="col-sm-2 control-label">{{ field.label }}</label>
+                <div class="col-sm-4">
+                    <!-- 这一格的控件对象渲染出来，已经带好 form-control 和 placeholder（见 utils/bootstrap.py） -->
+                    {{ field }}
+                    <!-- 只显示第一条错误：一次改一个问题，比堆一串更好用 -->
+                    {% if field.errors %}<span class="text-danger">{{ field.errors.0 }}</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="form-group">
+                <div class="col-sm-offset-2 col-sm-4">
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    <!-- 返回地址由视图传 back_url，避免模板里写死某个模块的列表页 -->
+                    <a href="{{ back_url|default:'/index/' }}" class="btn btn-default">返回</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

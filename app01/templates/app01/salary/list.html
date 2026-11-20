@@ -1,0 +1,73 @@
+{% extends "app01/layout.html" %}
+{% load filters %}
+{% block content %}
+<!--
+  薪资列表页（T7 的界面部分）
+  对应视图：app01/views/salary.py 的 salary_list()
+
+  三处值得讲：
+  1. 月份用 type="month"，浏览器直接给 "2026-10" 这种格式，后端不用解析；
+  2. 顶部"薪资总额"横幅只在选了月份时出现（模板里那个 if month）——
+     总额是视图用 aggregate(Sum) 让数据库算出来的，不是把明细拉回 Python 累加；
+  3. 表格里的"实发"是模型 save() 里算好存进 total 字段的，
+     模板只是读出来显示，不做减法——保证金额算法只有一份。
+-->
+<div class="page-title">薪资列表</div>
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <form class="form-inline" method="get">
+            <div class="form-group">
+                <input type="month" class="form-control" name="month" value="{{ month }}">
+            </div>
+            <div class="form-group">
+                <select class="form-control" name="employee">
+                    <option value="">全部员工</option>
+                    {% for e in emp_list %}
+                    <option value="{{ e.id }}" {% if emp_id == e.id|stringformat:'s' %}selected{% endif %}>{{ e.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-primary">筛选</button>
+            {% if request|has_perm:"/salary/add/" %}
+            <a href="/salary/add/" class="btn btn-success pull-right">录入薪资</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {% if no_binding %}
+    <div class="alert alert-warning" style="margin:10px;">
+        你的账号还没有绑定员工档案，所以看不到任何工资记录。
+        请联系管理员在「用户管理 → 编辑」里，为你的账号选择「对应员工」，绑定后这里就会显示你自己的工资。
+    </div>
+    {% endif %}
+    {% if month %}
+    <div class="alert alert-info" style="margin:10px;">
+        {{ month }} 薪资总额：<strong>¥ {{ month_total }}</strong>
+    </div>
+    {% endif %}
+    <table class="table table-bordered table-hover">
+        <thead><tr><th>ID</th><th>员工</th><th>月份</th><th>基本工资</th><th>奖金</th><th>扣款</th><th>考勤罚款</th><th>实发</th>{% if request|has_perm:"/salary/delete/" %}<th>操作</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <td>{{ obj.employee.name }}</td>                <td>{{ obj.month }}</td>
+                <td>{{ obj.base_pay }}</td>
+                <td>{{ obj.bonus }}</td>
+                <td>{{ obj.deduction }}</td>
+                <!-- 考勤罚款由模型 save() 自动汇总，不是手填的；有罚款时标红，便于一眼看到违规成本 -->
+                <td>
+                    {% if obj.attendance_fine %}<span style="color:#d9534f;">{{ obj.attendance_fine }}</span>
+                    {% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
+                <td><strong>{{ obj.total }}</strong></td>
+                {% if request|has_perm:"/salary/delete/" %}
+                <td><a href="/salary/delete/{{ obj.id }}/" class="btn btn-xs btn-danger" onclick="return confirm('确认删除？')">删除</a></td>
+                {% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="panel-footer">{{ page_html }}</div>
+</div>
+{% endblock %}

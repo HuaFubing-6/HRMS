@@ -1,0 +1,123 @@
+{% extends "app01/layout.html" %}
+{% block title %}数据点评 - 企业员工管理系统{% endblock %}
+{% block content %}
+<!--
+  数据智能点评页（T4）
+  视图：comment_page（渲染，带员工/月份下拉） + comment_generate（POST 接口）
+
+  这一页的关键不是"调模型"，而是"喂给模型的数据对不对"：
+    后端先把考勤（迟到/早退/缺勤/罚款）和薪资（基本/奖金/扣款/实发）拼成一句人话，
+    再把这句话交给模型点评；页面底部会把那句"原料"展开，方便核对模型有没有瞎说。
+
+  数据范围：普通员工只能点评自己（视图里用 scope 过滤，不是前端藏起来就算）。
+-->
+<h3>数据智能点评</h3>
+<p class="text-muted">选员工和月份，模型根据考勤与薪资数据给出一句点评和一条建议（50 字内）。</p>
+
+{% csrf_token %}
+
+<div class="panel panel-default">
+    <div class="panel-body">
+        <div class="row">
+            <div class="col-sm-4">
+                <div class="form-group">
+                    <label for="empSelect">员工</label>
+                    {% if can_choose_employee %}
+                    <select id="empSelect" class="form-control">
+                        {% for emp in employees %}
+                        <option value="{{ emp.id }}">{{ emp.name }}{% if emp.depart %}（{{ emp.depart.title }}）{% endif %}</option>
+                        {% empty %}
+                        <option value="">暂无可点评员工</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <!-- 普通员工：下拉里只有自己，这里直接显示名字，避免误以为能选别人 -->
+                    {% for emp in employees %}
+                    <input type="hidden" id="empSelect" value="{{ emp.id }}">
+                    <input class="form-control" value="{{ emp.name }}（本人）" disabled>
+                    {% empty %}
+                    <input class="form-control" value="你的账号还没有绑定员工档案" disabled>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="form-group">
+                    <label for="monthSelect">月份</label>
+                    <select id="monthSelect" class="form-control">
+                        {% for m in months %}
+                        <option value="{{ m }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div>
+                        <button id="btnComment" class="btn btn-primary">生成点评</button>
+                        <span id="cmStatus" class="text-muted" style="margin-left:8px;"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">点评结果</div>
+    <div class="panel-body">
+        <div id="cmResult" style="white-space:pre-wrap; min-height:60px;">还没有生成内容。</div>
+        <div id="cmRaw" style="margin-top:14px;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+$(function () {
+    var csrftoken = $('[name=csrfmiddlewaretoken]').val();
+
+    $("#btnComment").click(function () {
+        var empId = $("#empSelect").val();
+        var month = $("#monthSelect").val();
+        if (!empId) {
+            $("#cmResult").text("没有可点评的员工。");
+            return;
+        }
+
+        $("#btnComment").prop("disabled", true);
+        $("#cmStatus").text("正在生成…");
+        $("#cmResult").text("");
+        $("#cmRaw").empty();
+
+        $.ajax({
+            url: "/ai/comment/generate/",
+            type: "post",
+            dataType: "json",
+            headers: {"X-CSRFToken": csrftoken},
+            data: {employee_id: empId, month: month},
+            success: function (res) {
+                if (!res.status) {
+                    $("#cmResult").text("生成失败：" + res.msg);
+                    return;
+                }
+                $("#cmResult").text(res.data);
+                // 把喂给模型的原始数据也展示出来：答辩时老师问"模型凭什么这么说"，指这里
+                $("#cmRaw").html(
+                    '<div class="text-muted">喂给模型的数据：</div>' +
+                    '<pre style="white-space:pre-wrap; background:#f7f7f7; padding:10px; border-radius:4px; margin-top:6px;">' +
+                    $("<div>").text(res.raw).html() + '</pre>'
+                );
+                $("#cmStatus").text("");
+            },
+            error: function () {
+                $("#cmResult").text("网络异常，请检查服务是否在运行。");
+                $("#cmStatus").text("");
+            },
+            complete: function () { $("#btnComment").prop("disabled", false); }
+        });
+    });
+});
+</script>
+{% endblock %}

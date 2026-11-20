@@ -1,0 +1,57 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  考勤录入页（T6 的界面部分）
+  对应视图：app01/views/attendance.py 的 attendance_add()
+  ├─ GET  进来：只有 emp_list，下拉框靠它生成
+  └─ POST 校验失败：视图多传 errors（错误列表）和 form_data（已填内容）回来做回填
+
+  两处值得讲：
+  1. 输入框上的 required 只是浏览器便利校验，F12 删掉就能绕过，
+     真正的必填校验在视图里（员工、日期两个 if 判断）。
+  2. 时间是 type="time"，浏览器直接给你 HH:MM，省掉手输格式解析；
+     但后端仍然要能处理字符串——因为表单值永远是字符串。
+-->
+<div class="page-title">添加考勤记录</div>
+<div class="panel panel-default"><div class="panel-body">
+{% if errors %}
+<div class="alert alert-danger">
+    {% for e in errors %}<p style="margin:0;">{{ e }}</p>{% endfor %}
+</div>
+{% endif %}
+<form method="post" class="form-horizontal">
+    {% csrf_token %}
+    <div class="form-group">
+        <label class="col-sm-2 control-label">员工</label>
+        <div class="col-sm-4">
+            <!-- 回填时两边都要转成字符串再比：
+                 form_data.employee 来自 POST 是字符串，e.id 是整数，
+                 不做 stringformat 就永远不相等，下拉框会跳回第一个选项 -->
+            <select name="employee" class="form-control">
+                {% for e in emp_list %}
+                <option value="{{ e.id }}" {% if form_data.employee == e.id|stringformat:'s' %}selected{% endif %}>{{ e.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">日期</label>
+        <div class="col-sm-4"><input type="date" name="date" class="form-control" value="{{ form_data.date|default:'' }}" required></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">上班时间</label>
+        <div class="col-sm-4"><input type="time" name="on_time" class="form-control" value="{{ form_data.on_time|default:'' }}"></div>
+    </div>
+    <div class="form-group">
+        <label class="col-sm-2 control-label">下班时间</label>
+        <div class="col-sm-4"><input type="time" name="off_time" class="form-control" value="{{ form_data.off_time|default:'' }}"></div>
+    </div>
+    <div class="form-group">
+        <div class="col-sm-offset-2 col-sm-4">
+            <button class="btn btn-primary">保存</button>
+            <a href="/attendance/list/" class="btn btn-default">返回</a>
+        </div>
+    </div>
+</form>
+</div></div>
+{% endblock %}

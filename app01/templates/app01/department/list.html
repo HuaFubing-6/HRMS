@@ -1,0 +1,65 @@
+{% extends "app01/layout.html" %}
+
+<!--
+==============================================================================
+  部门列表页（T2）
+  对应视图：app01/views/department.py → department_list()
+  对应路由：app01/urls.py → path("department/list/", ...)
+
+  数据来源：视图 render 时传的 data_list（当前页数据）和 page_html（分页条 HTML）
+==============================================================================
+-->
+
+{% block content %}
+<!-- 浅灰标题条，跟教室投影截图保持一致 -->
+<div class="page-title">部门列表</div>
+
+<!--
+  删除被拒时的提示：视图发现"这个部门还有员工"就不再删，
+  带 ?err=has_emp&n=人数 回到这里，由 department_list() 翻译成一句话。
+-->
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <!-- 新增入口。如果想给普通员工藏掉这个按钮，可以用 has_perm 过滤器包一层判断 -->
+        <a href="/department/add/" class="btn btn-success">新增部门</a>
+    </div>
+
+    <table class="table table-bordered table-hover">
+        <thead>
+            <tr><th>ID</th><th>部门名称</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+        <!-- 循环当前页的部门对象；data_list 是 Pagination 切好片的 QuerySet -->
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <!-- {{ obj.title }}：变量输出默认会自动转义，所以部门名里带 < 之类的字符也不会破坏页面 -->
+                <td>{{ obj.title }}</td>
+                <td>
+                    <!-- 编辑：把主键拼进 URL，对应 path("department/edit/<int:pk>/") -->
+                    <a href="/department/edit/{{ obj.id }}/" class="btn btn-xs btn-primary">编辑</a>
+
+                    <!--
+                      删除：onclick 里的 confirm 是前端二次确认。
+                      为什么专门提示"级联删除其员工"？
+                      因为员工表的 depart 外键是 CASCADE，删部门会连带删掉该部门的员工，
+                      以及这些员工的考勤和薪资记录——这是真实影响，必须让操作的人知道。
+                      注意 confirm 只防手滑，真正的权限控制靠中间件。
+                    -->
+                    <a href="/department/delete/{{ obj.id }}/" class="btn btn-xs btn-danger"
+                       onclick="return confirm('删除部门将级联删除其员工，确认？')">删除</a>
+                </td>
+            </tr>
+        {% empty %}
+            <!-- for...empty：QuerySet 为空时给一句提示，而不是显示一张空表 -->
+            <tr><td colspan="3" class="text-center text-muted">暂无部门</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 分页条：page_html 是 Pagination 组件生成的 HTML，视图里已经 mark_safe 过 -->
+    <div class="panel-footer">{{ page_html }}</div>
+</div>
+{% endblock %}

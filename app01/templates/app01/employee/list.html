@@ -1,0 +1,65 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  员工列表页（T3 的界面部分）
+  对应视图：app01/views/employee.py 的 employee_list()
+
+  几个值得讲的地方：
+  1. 搜索表单用 method="get"：条件挂在 URL 上，链接能分享、刷新不丢、翻页后还在；
+  2. 部门下拉的回填要把 id 转成字符串比较（POST/GET 来的都是字符串，id 是整数）；
+  3. 表格里的部门名靠视图的 select_related 才不触发 N+1 查询；
+  4. 性别用 get_gender_display：字段定义了 choices，Django 会自动生成这个显示方法；
+  5. 分页那行不加 safe 过滤器，因为 page_html() 内部已经 mark_safe 过了；
+  6. 删除按钮的 confirm 只是防误点，真删权限由 RBAC 中间件管。
+-->
+<div class="page-title">员工列表</div>
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <form class="form-inline" method="get" action="/employee/list/">
+            <div class="form-group">
+                <input type="text" class="form-control" name="name" value="{{ search_name }}" placeholder="姓名搜索">
+            </div>
+            <div class="form-group">
+                <select class="form-control" name="depart">
+                    <option value="">全部部门</option>
+                    {% for d in depart_list %}
+                    <option value="{{ d.id }}" {% if depart_id == d.id|stringformat:'s' %}selected{% endif %}>{{ d.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">搜索</button>
+            <a href="/employee/add/" class="btn btn-success pull-right">新增员工</a>
+        </form>
+    </div>
+    <table class="table table-bordered table-hover">
+        <thead>
+            <tr>
+                <th>ID</th><th>姓名</th><th>性别</th><th>年龄</th>
+                <th>手机</th><th>部门</th><th>入职时间</th><th>头像</th><th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <td>{{ obj.name }}</td>
+                <td>{{ obj.get_gender_display }}</td>
+                <td>{{ obj.age }}</td>
+                <td>{{ obj.phone }}</td>
+                <td>{{ obj.depart.title }}</td>
+                <td>{{ obj.entry_time|date:"Y-m-d" }}</td>
+                <td>
+                    {% if obj.avatar %}<img src="/media/{{ obj.avatar }}" style="height:30px;">{% else %}-{% endif %}
+                </td>
+                <td>
+                    <a href="/employee/edit/{{ obj.id }}/" class="btn btn-xs btn-primary">编辑</a>
+                    <a href="/employee/delete/{{ obj.id }}/" class="btn btn-xs btn-danger"
+                       onclick="return confirm('确认删除？')">删除</a>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="panel-footer">{{ page_html }}</div>
+</div>
+{% endblock %}

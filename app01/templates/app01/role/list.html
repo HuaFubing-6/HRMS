@@ -1,0 +1,67 @@
+{% extends "app01/layout.html" %}
+
+<!--
+==============================================================================
+  角色列表页（T5 的配置界面）
+  对应视图：app01/views/rbac.py → role_list()
+  对应路由：app01/urls.py → path("role/list/", ...)
+
+  这一页展示 RBAC 里的"角色"这一层：
+  一个角色挂着多少个权限，直接决定了这个角色能访问哪些页面。
+==============================================================================
+-->
+
+{% block content %}
+<div class="page-title">角色列表</div>
+
+<!-- 删除超级管理员被拒时，视图会带 ?err=super 回来，这里显示原因 -->
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <!-- 新增角色时要勾选权限，对应 role_add() 里的 POST.getlist("permissions") -->
+        <a href="/role/add/" class="btn btn-success">新增角色</a>
+    </div>
+
+    <table class="table table-bordered">
+        <thead>
+            <tr><th>ID</th><th>角色名称</th><th>权限数</th><th style="width:140px;">操作</th></tr>
+        </thead>
+        <tbody>
+        {% for obj in data_list %}
+            <tr>
+                <td>{{ obj.id }}</td>
+                <td>{{ obj.title }}</td>
+                <td>
+                    <!--
+                      permissions.count：统计这个角色关联了多少条权限记录（多对多关系）。
+                      三个角色的典型值：
+                        超级管理员 33（全部权限）
+                        部门管理员 26（业务模块，不含用户/角色管理）
+                        普通员工   5（首页、公告、图表）
+
+                      注意：超级管理员在中间件里是靠 is_superuser 直接放行的，
+                      不依赖这份权限列表。但界面上还是要给它配全，
+                      否则列表里显示"0 个权限"，看起来像配置漏了。
+                    -->
+                    {{ obj.permissions.count }}
+                </td>
+                <td>
+                    <!-- 编辑：打开同一套表单，回填角色名 + 已勾选的权限 -->
+                    <a href="/role/edit/{{ obj.id }}/" class="btn btn-xs btn-primary">编辑</a>
+                    <!--
+                      删除：confirm 里说清后果。
+                      用户表的 role 是 SET_NULL，所以删角色不会删账号，
+                      账号只是变成"无角色"，重新分配即可。
+                    -->
+                    <a href="/role/delete/{{ obj.id }}/" class="btn btn-xs btn-danger"
+                       onclick="return confirm('删除后使用该角色的账号将变为“无角色”，确认删除？')">删除</a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="4" class="text-center text-muted">暂无角色</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

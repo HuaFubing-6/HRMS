@@ -1,0 +1,81 @@
+{% extends "app01/layout.html" %}
+
+<!--
+==============================================================================
+  任务编辑页（T9 的编辑功能）
+  对应视图：app01/views/task.py → task_edit(request, pk)
+  对应路由：app01/urls.py → task/edit/<int:pk>/
+
+  注意：这个页面是"同步提交"，和列表页顶部的"新增（AJAX）"不是一回事。
+  新增用 AJAX 演示异步；编辑要回填、要定位具体一条，做成普通表单更直接。
+==============================================================================
+-->
+
+{% block content %}
+<div class="page-title">编辑任务</div>
+
+<div class="panel panel-default"><div class="panel-body">
+    <!-- 校验失败时视图会把第一条错误塞进 errors，这里按字段显示 -->
+    {% if errors %}
+    <div class="alert alert-danger">
+        {% for field, msg in errors.items %}<div>{{ msg }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" class="form-horizontal">
+        {% csrf_token %}
+        <div class="row">
+            <div class="col-sm-6">
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">级别</label>
+                    <div class="col-sm-9">
+                        <!-- 回填：obj.level 与选项值相等就选中，因此打开页面看到的是原来的级别 -->
+                        <select name="level" class="form-control">
+                            <option value="1" {% if obj.level == 1 %}selected{% endif %}>高</option>
+                            <option value="2" {% if obj.level == 2 %}selected{% endif %}>中</option>
+                            <option value="3" {% if obj.level == 3 %}selected{% endif %}>低</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">标题</label>
+                    <div class="col-sm-9">
+                        <input type="text" name="title" class="form-control" value="{{ obj.title }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-sm-6">
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">详细信息</label>
+                    <div class="col-sm-9">
+                        <textarea name="detail" class="form-control" rows="3">{{ obj.detail }}</textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">负责人</label>
+                    <div class="col-sm-9">
+                        <!-- 回填负责人：用 obj.leader_id 比对（id 比对象更直接，也不多查一次库） -->
+                        <select name="leader" class="form-control">
+                            {% for e in emp_list %}
+                            <option value="{{ e.id }}" {% if e.id == obj.leader_id %}selected{% endif %}>{{ e.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <div class="col-sm-12">
+                <button type="submit" class="btn btn-primary">保存修改</button>
+                <a href="/task/list/" class="btn btn-default">取消</a>
+            </div>
+        </div>
+    </form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "app01/layout.html" %}
+
+<!--
+==============================================================================
+  账号切换页（答辩演示用）
+  对应视图：app01/views/account.py → switch_account() / switch_to() / switch_back()
+  对应路由：/account/switch/  列表
+            /account/switch/<pk>/  切到某个账号
+            /account/switch/back/  切回原管理员
+
+  只有超级管理员能打开这个页面。
+  演示时不用退出重登，点一下就换身份，省去输账号密码和验证码的时间。
+
+  实现方式说明（可能被老师问到）：
+  切换用的是 GET 链接，不是 POST 表单。严格讲它会改变 session 状态，
+  更规范的做法是 POST + CSRF token；这里为了"点一下就能演示"选了 GET，
+  并加了 onclick confirm 防误点。真要上线，应改成 POST 表单。
+==============================================================================
+-->
+
+{% block content %}
+<div class="page-title">切换账号</div>
+
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <!-- 当前登录人：session 里的 username 由登录/切换视图写入，取不到再退回 request.user，default 用于兜底 -->
+        当前登录：<strong>{{ request.session.username|default:request.user.username }}</strong>
+        <span class="text-muted">（选择下面的账号即可切换身份）</span>
+    </div>
+
+    <div class="panel-body" style="padding-bottom:6px;">
+        <!-- 把"这是个演示功能"写在页面上，答辩被问到时也有据可依 -->
+        <div class="alert alert-info" style="margin-bottom:12px;">
+            这是课程设计里的演示辅助功能，用于快速对比不同角色的权限表现。
+            只有在 DEBUG 模式下才启用，上线关掉 DEBUG 后自动失效。
+        </div>
+    </div>
+
+    <!--
+      账号表格：列出所有账号，供超管挑一个切换过去。
+      三处细节：
+      1. u.role.title 必须用 default 兜底 —— role 是 SET_NULL 外键，可能为空，
+         不兜底页面上会显示成 "None"；
+      2. is_superuser 和 role 是两套东西：超管即使没分配角色也照样全通，
+         所以"类型"列单独判断，不从角色名推；
+      3. 自己这一行不渲染切换按钮，避免"切到自己"这种无意义操作。
+    -->
+    <table class="table table-bordered table-hover" style="margin-bottom:0;">
+        <thead>
+            <tr><th>ID</th><th>用户名</th><th>角色</th><th>类型</th><th style="width:140px;">操作</th></tr>
+        </thead>
+        <tbody>
+        {% for u in user_list %}
+            <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <td>{{ u.role.title|default:"未分配角色" }}</td>
+                <td>
+                    {% if u.is_superuser %}
+                        <span class="label label-warning">超级管理员</span>
+                    {% else %}
+                        <span class="label label-default">普通用户</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if u.id == request.user.id %}
+                        <span class="text-muted">当前账号</span>
+                    {% else %}
+                        <!-- 点链接直接换身份；切换后顶部菜单会按新角色的权限重新渲染 -->
+                        <a href="/account/switch/{{ u.id }}/" class="btn btn-xs btn-primary"
+                           onclick="return confirm('切换到账号 {{ u.username }} ？')">切换到此账号</a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="panel-footer">
+        <a href="/index/" class="btn btn-default">返回首页</a>
+    </div>
+</div>
+{% endblock %}

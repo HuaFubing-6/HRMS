@@ -1,0 +1,52 @@
+{% extends "app01/layout.html" %}
+{% block content %}
+<!--
+  首页仪表盘（T4 的界面部分）
+  对应视图：app01/views/dashboard.py
+
+  四张统计卡的数字（部门/员工/公告/薪资）全部由视图用 count() 查出来传进来，
+  模板只负责显示，不做任何计算——这样"数字从哪来"永远只有一个答案。
+  卡片样式（白底、细边框、黑色 40px 数字）定义在 layout.html 的 style 里，
+  这里只套 class，改样式不用改页面。
+
+  快捷入口是给答辩走查用的：从首页一步点到每个模块，不用记地址。
+-->
+<div class="page-title">企业员工管理系统</div>
+<div class="row">
+    <div class="col-sm-3">
+        <div class="stat-card">
+            <div class="num">{{ dept_count }}</div>
+            <div class="label-text">部门数量</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="stat-card">
+            <div class="num">{{ emp_count }}</div>
+            <div class="label-text">员工数量</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="stat-card">
+            <div class="num">{{ notice_count }}</div>
+            <div class="label-text">公告数量</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="stat-card">
+            <div class="num">{{ salary_count }}</div>
+            <div class="label-text">薪资记录</div>
+        </div>
+    </div>
+</div>
+
+<h4>快捷入口</h4>
+<div class="list-group">
+    <a href="/department/list/" class="list-group-item">部门管理</a>
+    <a href="/employee/list/" class="list-group-item">员工管理</a>
+    <a href="/attendance/list/" class="list-group-item">考勤管理</a>
+    <a href="/salary/list/" class="list-group-item">薪资管理</a>
+    <a href="/notice/list/" class="list-group-item">公告管理</a>
+    <a href="/task/list/" class="list-group-item">任务管理</a>
+    <a href="/chart/" class="list-group-item">数据统计</a>
+</div>
+{% endblock %}
